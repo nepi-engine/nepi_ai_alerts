@@ -300,8 +300,10 @@ class AppAiAlerts extends Component {
 
 
   renderImageViewer(){
-    const appNamespace = this.getAppNamespace()
-    const imageNamespace = appNamespace + "/alert_image"
+    const connected = this.state.connected
+    const namespace = this.getAppNamespace()
+    const appNamespace = (connected) ? namespace: null
+    const imageNamespace = (connected) ? appNamespace + "/alert_image" : null
     return (
 
       <CameraViewer
@@ -314,25 +316,39 @@ class AppAiAlerts extends Component {
     }  
 
   render() {
-    const appNamespace = this.getAppNamespace()
+    const connected = this.state.connected
+    const namespace = this.getAppNamespace()
+    const appNamespace = (connected) ? namespace: null
     return (
 
       <Columns>
       <Column equalWidth={true}>
 
+      <div hidden={connected}>
+
+
+      <label style={{fontWeight: 'bold'}} align={"left"} textAlign={"left"}>
+          {"Connecting"}
+         </label>
+      
+      </div>
+
+
+      <div hidden={!connected}>
+
       {this.renderImageViewer()}
 
+      </div>
       </Column>
       <Column>
 
+      <div hidden={!connected}>
       <AiDetectorMgr
               title={"Nepi_Mgr_AI_Detector"}
           />
 
       {this.renderApp()}
 
- 
-      <div hidden={appNamespace === null}>
         <NepiIFSaveData
           saveNamespace={appNamespace}
           title={"Nepi_IF_SaveData"}
@@ -341,8 +357,6 @@ class AppAiAlerts extends Component {
 
       </Column>
       </Columns>
-
-
 
       )
     }  

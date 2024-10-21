@@ -42,7 +42,7 @@ class AppAiAlerts extends Component {
       appName: "app_ai_alerts",
       appNamespace: null,
 
-      location: "",
+      location_str: "",
       sensitivity: 0.5,
       snapshot_enabled: false,
       snapshot_delay: 5,
@@ -90,7 +90,7 @@ class AppAiAlerts extends Component {
   statusListener(message) {
     this.setState({
 
-    location: message.location,
+    location_str: message.location_str,
     sensitivity: message.sensitiivty,
     snapshot_enabled: message.snapshot_enabled,
     snapshot_delay: message.snapshot_delay_sec,
@@ -113,9 +113,9 @@ class AppAiAlerts extends Component {
 
     const last_classes_list = this.state.last_classes_list
     this.setState({
-      last_classes_list: this.state.available_targets_list
+      last_classes_list: this.state.available_classes_list
     })
-    if (last_classes_list !== this.state.available_targets_list){
+    if (last_classes_list !== this.state.available_classes_list){
       this.render()
     }
   }
@@ -129,7 +129,7 @@ class AppAiAlerts extends Component {
       }
       var statusListener = this.props.ros.setupStatusListener(
             statusNamespace,
-            "nepi_app_ai_targeting/AiAlertsStatus",
+            "nepi_app_ai_alerts/AiAlertsStatus",
             this.statusListener
           )
       this.setState({ 
@@ -192,10 +192,10 @@ class AppAiAlerts extends Component {
     const appNamespace = this.getAppNamespace()
     const classSelection = event.target.value
     const selectedClassesList = this.state.selected_classes_list
-    const addAllNamespace = appNamespace + "/add_all_target_classes"
-    const removeAllNamespace = appNamespace + "/remove_all_target_classes"
-    const addNamespace = appNamespace + "/add_target_class"
-    const removeNamespace = appNamespace + "/remove_target_class"
+    const addAllNamespace = appNamespace + "/add_all_alert_classes"
+    const removeAllNamespace = appNamespace + "/remove_all_alert_classes"
+    const addNamespace = appNamespace + "/add_alert_class"
+    const removeNamespace = appNamespace + "/remove_alert_class"
     if (appNamespace){
       if (classSelection === "None"){
           sendTriggerMsg(removeAllNamespace)
@@ -282,7 +282,7 @@ class AppAiAlerts extends Component {
         <SliderAdjustment
           title={"Alert Sensitivity Ratio"}
           msgType={"std_msgs/float32"}
-          adjustment={this.state.target_min_px_ratio}
+          adjustment={this.state.sensitivity}
           topic={appNamespace + "/set_sensitivity"}
           scaled={0.01}
           min={0}

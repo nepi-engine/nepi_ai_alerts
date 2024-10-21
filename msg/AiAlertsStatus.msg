@@ -1,4 +1,4 @@
-string location
+string location_str
 
 bool classifier_running
 

@@ -57,6 +57,7 @@ class NepiAiAlertsApp(object):
   
   FACTORY_SENSITIVITY = 0.5
   FACTORY_SENSITIVITY_COUNT = 10
+  FACTORY_USE_LAST_IMAGE = True
 
   NONE_CLASSES_DICT = dict()
 
@@ -104,6 +105,8 @@ class NepiAiAlertsApp(object):
   no_object_count = 0
 
   last_snapshot = time.time()
+  last_cv2_img = None
+  
   #######################
   ### Node Initialization
   DEFAULT_NODE_NAME = "app_ai_alerts" # Can be overwitten by luanch command
@@ -153,6 +156,7 @@ class NepiAiAlertsApp(object):
 
     # App Specific Subscribers
     set_image_input_sub = rospy.Subscriber('~use_live_image', Bool, self.setImageLiveCb, queue_size = 10)
+    set_image_delay_sub = rospy.Subscriber('~use_last_image', Bool, self.setImageLastCb, queue_size = 10)
     add_all_sub = rospy.Subscriber('~add_all_alert_classes', Empty, self.addAllClassesCb, queue_size = 10)
     remove_all_sub = rospy.Subscriber('~remove_all_alert_classes', Empty, self.removeAllClassesCb, queue_size = 10)
     add_class_sub = rospy.Subscriber('~add_alert_class', String, self.addClassCb, queue_size = 10)
@@ -198,6 +202,7 @@ class NepiAiAlertsApp(object):
   def resetApp(self):
     nepi_ros.set_param(self,'~last_classifier', "")
     nepi_ros.set_param(self,'~use_live_image',True)
+    nepi_ros.set_param(self,'~use_last_image',self.FACTORY_USE_LAST_IMAGE)
     nepi_ros.set_param(self,'~selected_classes', [])
     nepi_ros.set_param(self,'~sensitivity', self.FACTORY_SENSITIVITY)
     nepi_ros.set_param(self,'~snapshot_enabled', False)
@@ -221,6 +226,7 @@ class NepiAiAlertsApp(object):
       nepi_msg.publishMsgInfo(self," Setting init values to param values")
       self.init_last_classifier = nepi_ros.get_param(self,"~last_classifier", "")
       self.init_use_live_image = nepi_ros.get_param(self,'~use_live_image',True)
+      self.init_use_last_image = nepi_ros.get_param(self,'~use_last_image',self.FACTORY_USE_LAST_IMAGE)
       sel_classes = nepi_ros.get_param(self,'~selected_classes', ['All'])
       if 'All' in sel_classes:
         self.addAllClasses()
@@ -236,6 +242,7 @@ class NepiAiAlertsApp(object):
   def resetParamServer(self,do_updates = True):
       nepi_ros.set_param(self,'~last_classiier', self.init_last_classifier)
       nepi_ros.set_param(self,'~use_live_image',self.init_use_live_image)
+      nepi_ros.set_param(self,'~use_last_image',self.init_use_last_image)
       nepi_ros.set_param(self,'~selected_classes', self.init_selected_classes)
       nepi_ros.set_param(self,'~sensitivity', self.init_sensitivity)
       nepi_ros.set_param(self,'~snapshot_enabled', self.init_snapshot_enabled)
@@ -257,6 +264,7 @@ class NepiAiAlertsApp(object):
     status_msg.classifier_name = self.current_classifier
     status_msg.classifier_state = self.current_classifier_state
     status_msg.use_live_image = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
+    status_msg.use_last_image = nepi_ros.get_param(self,'~use_last_image',self.init_use_last_image)
 
     avail_classes = self.classes_list
     #nepi_msg.publishMsgWarn(self," available classes: " + str(avail_classes))
@@ -416,6 +424,12 @@ class NepiAiAlertsApp(object):
       nepi_ros.set_param(self,'~use_live_image',live)
     self.publish_status()
 
+  def setImageLastCb(self,msg):
+    ##nepi_msg.publishMsgInfo(self,msg)
+    use_last = msg.data
+    nepi_ros.set_param(self,'~use_last_image',use_last)
+    self.publish_status()
+
   def addAllClassesCb(self,msg):
     self.addAllClasses()
     self.publish_status()
@@ -542,7 +556,7 @@ class NepiAiAlertsApp(object):
 
   def alertsImageCb(self,img_in_msg):    
     data_product = 'alert_image'
-   
+    use_last_img = nepi_ros.get_param(self,'~use_last_image',self.init_use_last_image)
     has_subscribers =  self.has_subscribers_alert_img
     saving_is_enabled = self.save_data_if.data_product_saving_enabled(data_product)
     data_should_save  = self.save_data_if.data_product_should_save(data_product) and saving_is_enabled
@@ -551,17 +565,22 @@ class NepiAiAlertsApp(object):
 
     self.current_image_header = img_in_msg.header
     ros_timestamp = img_in_msg.header.stamp     
-    self.img_height = img_in_msg.height
-    self.img_width = img_in_msg.width
     cv2_in_img = nepi_img.rosimg_to_cv2img(img_in_msg)
-    cv2_img = copy.deepcopy(cv2_in_img)
+    if use_last_img:
+      cv2_img = copy.deepcopy(self.last_cv2_img)
+    else:
+      cv2_img = copy.deepcopy(cv2_in_img)
+    self.last_cv2_img = copy.deepcopy(cv2_in_img)
     alerts_list = copy.deepcopy(self.alerts_list)
     bbs_msg = copy.deepcopy(self.bbs_msg)
 
     # Process Alerts Image if Needed
     if alerts_list == None:
         alerts_list = []
-    if len(alerts_list) > 0:
+    if len(alerts_list) > 0 and cv2_img is not None:
+        cv2_shape = cv2_img.shape
+        self.img_width = cv2_shape[1] 
+        self.img_height = cv2_shape[0] 
         # create save dict
         alert_dict = dict()
         alert_dict['timestamp'] = nepi_ros.get_datetime_str_from_stamp(ros_timestamp)
@@ -591,19 +610,19 @@ class NepiAiAlertsApp(object):
             if time_since >= snapshot_delay:
                 nepi_save.save_dict2file(self,'alerts',alert_dict,ros_timestamp,save_check = False)
                 nepi_save.save_img2file(self,'alert_image',cv2_img,ros_timestamp,save_check = False)
-
-    # Publish new image to ros
-    if not nepi_ros.is_shutdown() and has_subscribers: #and has_subscribers:
-        #Convert OpenCV image to ROS image
-        cv2_shape = cv2_img.shape
-        if  cv2_shape[2] == 3:
-          encode = 'bgr8'
-        else:
-          encode = 'mono8'
-        img_out_msg = nepi_img.cv2img_to_rosimg(cv2_img, encoding=encode)
-        self.alerts_image_pub.publish(img_out_msg)
-    # Save Data if Time
-    nepi_save.save_img2file(self,'alert_image',cv2_img,ros_timestamp,save_check = False)
+    if cv2_img is not None:
+      # Publish new image to ros
+      if not nepi_ros.is_shutdown() and has_subscribers: #and has_subscribers:
+          #Convert OpenCV image to ROS image
+          cv2_shape = cv2_img.shape
+          if  cv2_shape[2] == 3:
+            encode = 'bgr8'
+          else:
+            encode = 'mono8'
+          img_out_msg = nepi_img.cv2img_to_rosimg(cv2_img, encoding=encode)
+          self.alerts_image_pub.publish(img_out_msg)
+      # Save Data if Time
+      nepi_save.save_img2file(self,'alert_image',cv2_img,ros_timestamp,save_check = False)
     
 
 

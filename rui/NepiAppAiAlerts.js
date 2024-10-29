@@ -52,6 +52,7 @@ class AppAiAlerts extends Component {
       classifier_state: null,
 
       use_live_image: true,
+      use_last_image: true,
       image_topic: null,
       
       available_classes_list: [],
@@ -100,6 +101,7 @@ class AppAiAlerts extends Component {
     classifier_name: message.classifier_name,
     classifier_state: message.classifier_state,
     use_live_image: message.use_live_image,
+    use_last_image: message.use_last_image,
     image_topic: message.image_topic,
     
     available_classes_list: message.available_classes_list,
@@ -257,6 +259,13 @@ class AppAiAlerts extends Component {
               <Toggle
               checked={this.state.use_live_image===true}
               onClick={() => sendBoolMsg(appNamespace + "/use_live_image",!this.state.use_live_image)}>
+              </Toggle>
+        </Label>
+        
+        <Label title="Use Last Image">
+              <Toggle
+              checked={this.state.use_last_image===true}
+              onClick={() => sendBoolMsg(appNamespace + "/use_last_image",!this.state.use_last_image)}>
               </Toggle>
         </Label>
 

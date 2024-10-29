@@ -6,6 +6,7 @@ string classifier_name
 string classifier_state
 
 bool use_live_image
+bool use_last_image
 string image_topic
 
 string[] available_classes_list

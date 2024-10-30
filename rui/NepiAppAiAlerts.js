@@ -92,7 +92,7 @@ class AppAiAlerts extends Component {
     this.setState({
 
     location_str: message.location_str,
-    sensitivity: message.sensitiivty,
+    sensitivity: message.sensitivity,
     snapshot_enabled: message.snapshot_enabled,
     snapshot_delay: message.snapshot_delay_sec,
 
@@ -255,20 +255,6 @@ class AppAiAlerts extends Component {
               </Column>
               <Column>
 
-          <Label title="Use Live Image">
-              <Toggle
-              checked={this.state.use_live_image===true}
-              onClick={() => sendBoolMsg(appNamespace + "/use_live_image",!this.state.use_live_image)}>
-              </Toggle>
-        </Label>
-        
-        <Label title="Use Last Image">
-              <Toggle
-              checked={this.state.use_last_image===true}
-              onClick={() => sendBoolMsg(appNamespace + "/use_last_image",!this.state.use_last_image)}>
-              </Toggle>
-        </Label>
-
               <ButtonMenu>
             <Button onClick={() => sendTriggerMsg( appNamespace + "/reset_app")}>{"Reset App"}</Button>
           </ButtonMenu>
@@ -280,6 +266,23 @@ class AppAiAlerts extends Component {
         <ButtonMenu>
               <Button onClick={() => sendTriggerMsg( appNamespace + "/reset_config")}>{"Reset Config"}</Button>
         </ButtonMenu>
+
+          <Label title="Use Live Image">
+              <Toggle
+              checked={this.state.use_live_image===true}
+              onClick={() => sendBoolMsg(appNamespace + "/use_live_image",!this.state.use_live_image)}>
+              </Toggle>
+        </Label>
+        
+        
+        <Label title="Use Last Image">
+              <Toggle
+              checked={this.state.use_last_image===true}
+              onClick={() => sendBoolMsg(appNamespace + "/use_last_image",!this.state.use_last_image)}>
+              </Toggle>
+        </Label>
+
+
 
 
               </Column>

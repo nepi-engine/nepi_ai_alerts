@@ -55,9 +55,9 @@ class NepiAiAlertsApp(object):
 
   #Set Initial Values
   
-  FACTORY_SENSITIVITY = 0.5
+  FACTORY_SENSITIVITY = 0.0
   FACTORY_SENSITIVITY_COUNT = 10
-  FACTORY_USE_LAST_IMAGE = True
+  FACTORY_USE_LAST_IMAGE = False
 
   NONE_CLASSES_DICT = dict()
 
@@ -106,6 +106,8 @@ class NepiAiAlertsApp(object):
 
   last_snapshot = time.time()
   last_cv2_img = None
+
+  reset_image_topic = False
   
   #######################
   ### Node Initialization
@@ -343,7 +345,8 @@ class NepiAiAlertsApp(object):
     #nepi_msg.publishMsgWarn(self," Got image topics last and current: " + self.last_image_topic + " " + self.current_image_topic)
     if self.classifier_running:
       use_live_image = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
-      if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None"):
+      if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None") or self.reset_image_topic == True:
+        self.reset_image_topic = False
         image_topic = ""
         if use_live_image:
           image_topic = nepi_ros.find_topic(self.current_image_topic)
@@ -353,20 +356,20 @@ class NepiAiAlertsApp(object):
         nepi_msg.publishMsgInfo(self," Got detect image update topic update : " + image_topic)
         update_status = True
         if image_topic != "":
-          self.alerts_running = True
-          update_status = True
           if self.image_sub != None:
             nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + image_topic)
             self.image_sub.unregister()
+            time.sleep(1)
             self.image_sub = None
+          nepi_msg.publishMsgInfo(self," Subscribing to Image topic : " + image_topic)
+          self.image_sub = rospy.Subscriber(image_topic, Image, self.alertsImageCb, queue_size = 1)
           time.sleep(1)
           if self.alerts_image_pub is None:
             #nepi_msg.publishMsgWarn(self," Creating Image publisher ")
             self.alerts_image_pub = rospy.Publisher("~image",Image,queue_size=1)
             time.sleep(1)
-          nepi_msg.publishMsgInfo(self," Subscribing to Image topic : " + image_topic)
-
-          self.image_sub = rospy.Subscriber(image_topic, Image, self.alertsImageCb, queue_size = 1)
+          self.alerts_running = True
+          update_status = True
     elif self.classifier_running == False or self.current_image_topic == "None" or self.current_image_topic == "":  # Turn off alerts subscribers and reset last image topic
       self.alerts_running = False
       self.alerts_dict = dict()
@@ -420,8 +423,8 @@ class NepiAiAlertsApp(object):
     live = msg.data
     current_live = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
     if live != current_live:
-      self.last_image_topic = None # Will force resubscribe later
       nepi_ros.set_param(self,'~use_live_image',live)
+      self.reset_image_topic = True # Will force resubscribe later
     self.publish_status()
 
   def setImageLastCb(self,msg):
@@ -568,16 +571,16 @@ class NepiAiAlertsApp(object):
     cv2_in_img = nepi_img.rosimg_to_cv2img(img_in_msg)
     if use_last_img:
       cv2_img = copy.deepcopy(self.last_cv2_img)
+      self.last_cv2_img = copy.deepcopy(cv2_in_img)
     else:
       cv2_img = copy.deepcopy(cv2_in_img)
-    self.last_cv2_img = copy.deepcopy(cv2_in_img)
     if cv2_img is not None:
         cv2_shape = cv2_img.shape
         self.img_width = cv2_shape[1] 
         self.img_height = cv2_shape[0] 
     alerts_list = copy.deepcopy(self.alerts_list)
     bbs_msg = copy.deepcopy(self.bbs_msg)
-
+  
     # Process Alerts Image if Needed
     if alerts_list == None:
         alerts_list = []

@@ -571,6 +571,10 @@ class NepiAiAlertsApp(object):
     else:
       cv2_img = copy.deepcopy(cv2_in_img)
     self.last_cv2_img = copy.deepcopy(cv2_in_img)
+    if cv2_img is not None:
+        cv2_shape = cv2_img.shape
+        self.img_width = cv2_shape[1] 
+        self.img_height = cv2_shape[0] 
     alerts_list = copy.deepcopy(self.alerts_list)
     bbs_msg = copy.deepcopy(self.bbs_msg)
 
@@ -578,9 +582,6 @@ class NepiAiAlertsApp(object):
     if alerts_list == None:
         alerts_list = []
     if len(alerts_list) > 0 and cv2_img is not None:
-        cv2_shape = cv2_img.shape
-        self.img_width = cv2_shape[1] 
-        self.img_height = cv2_shape[0] 
         # create save dict
         alert_dict = dict()
         alert_dict['timestamp'] = nepi_ros.get_datetime_str_from_stamp(ros_timestamp)

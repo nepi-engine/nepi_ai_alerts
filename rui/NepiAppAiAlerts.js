@@ -331,27 +331,21 @@ class AppAiAlerts extends Component {
     return (
 
       <Columns>
-      <Column equalWidth={true}>
+      <Column equalWidth={false}>
 
-      <div hidden={connected}>
-
-
+  
       <label style={{fontWeight: 'bold'}} align={"left"} textAlign={"left"}>
           {"Connecting"}
          </label>
       
-      </div>
-
-
-      <div hidden={!connected}>
 
       {this.renderImageViewer()}
 
-      </div>
+
       </Column>
       <Column>
 
-      <div hidden={!connected}>
+
       <AiDetectorMgr
               title={"Nepi_Mgr_AI_Detector"}
           />
@@ -362,7 +356,6 @@ class AppAiAlerts extends Component {
           saveNamespace={appNamespace}
           title={"Nepi_IF_SaveData"}
         />
-      </div>
 
       </Column>
       </Columns>

@@ -1,0 +1,13 @@
+APP_DICT:
+  description: Application for alerts and actions related to ai based detections
+  pkg_name: nepi_app_ai_alerts
+  group_name: AI
+  config_file: app_ai_alerts.yaml
+  app_file: ai_alerts_app_node.py
+  node_name: app_ai_alerts
+RUI_DICT:
+  rui_menu_name: AI Alerts
+  rui_files:
+  - NepiAppAiAlerts.js
+  rui_main_file: NepiAppAiAlerts.js
+  rui_main_class: AiAlertsApp

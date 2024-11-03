@@ -150,8 +150,6 @@ class NepiAiAlertsApp(object):
     # Temp Fix until added as NEPI ROS Node
     self.save_cfg_if = SaveCfgIF(updateParamsCallback=self.initParamServerValues, 
                                  paramsModifiedCallback=self.updateFromParamServer)
-
-
     ## App Setup ########################################################
     app_reset_app_sub = rospy.Subscriber('~reset_app', Empty, self.resetAppCb, queue_size = 10)
     self.initParamServerValues(do_updates=False)

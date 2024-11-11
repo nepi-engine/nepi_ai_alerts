@@ -19,6 +19,7 @@ import Input from "./Input"
 import Select, { Option } from "./Select"
 import Styles from "./Styles"
 import Toggle from "react-toggle"
+import BooleanIndicator from "./BooleanIndicator"
 
 
 import AiDetectorMgr from "./NepiMgrAiDetector"
@@ -26,7 +27,7 @@ import CameraViewer from "./CameraViewer"
 import NepiIFSaveData from "./Nepi_IF_SaveData"
 
 
-import {round, convertStrToStrList, createMenuListFromStrList, onDropdownSelectedSendStr, onUpdateSetStateValue, onEnterSendFloatValue, onEnterSendIntValue, onEnterSetStateFloatValue} from "./Utilities"
+import {round, onChangeSwitchStateValue, onUpdateSetStateValue, onEnterSendFloatValue} from "./Utilities"
 
 @inject("ros")
 @observer
@@ -42,22 +43,26 @@ class AppAiAlerts extends Component {
       appName: "app_ai_alerts",
       appNamespace: null,
 
+      app_enabled: false,
+      app_msg: "Connecting",
+      image_name: "alert_image",
+      show_detector_box: false,
+
       location_str: "",
-      sensitivity: 0.5,
-      snapshot_enabled: false,
-      snapshot_delay: 5,
 
       classifier_running: false,
-      classifier_name: null,
-      classifier_state: null,
 
-      use_live_image: true,
-      use_last_image: true,
       image_topic: null,
       
       available_classes_list: [],
       last_classes_list: [],
       selected_classes_list:[],
+
+      sensitivity: null,
+      snapshot_enabled: null,
+      snapshot_delay: null,
+
+      active_alert: false,
         
       viewableTopics: false,
 
@@ -91,22 +96,23 @@ class AppAiAlerts extends Component {
   statusListener(message) {
     this.setState({
 
+    app_enabled: message.app_enabled,
+    app_msg: message.app_msg,
+
     location_str: message.location_str,
+
+    image_topic: message.image_topic,
+
+    classifier_running: message.classifier_running,
+    available_classes_list: message.available_classes_list,
+    selected_classes_list: message.selected_classes_list,
+
     sensitivity: message.sensitivity,
     snapshot_enabled: message.snapshot_enabled,
     snapshot_delay: message.snapshot_delay_sec,
 
-    classifier_running: message.classifier_running,
+    active_alert: message.active_alert
 
-    classifier_name: message.classifier_name,
-    classifier_state: message.classifier_state,
-    use_live_image: message.use_live_image,
-    use_last_image: message.use_last_image,
-    image_topic: message.image_topic,
-    
-    available_classes_list: message.available_classes_list,
-    selected_classes_list: message.selected_classes_list,
-    selected_classes_depth_list: message.selected_classes_depth_list
     })
 
     this.setState({
@@ -219,19 +225,92 @@ class AppAiAlerts extends Component {
 
   renderApp() {
     const {sendBoolMsg, sendTriggerMsg,} = this.props.ros
-    const appNamespace = this.getAppNamespace()
     const classOptions = this.getClassOptions()
     const selectedClasses = this.state.selected_classes_list
     const NoneOption = <Option>None</Option>
     const classifier_running = this.state.classifier_running
+    const connected = this.state.connected === true
+    const appNamespace = this.getAppNamespace()
+    const classes_sel = selectedClasses.length > 1
+
     return (
       <Section title={"AI Alerts App"}>
 
         <Columns>
         <Column>
-        
 
-            <Label title="Select Class Filters"> </Label>
+
+        <Columns>
+          <Column>
+
+          <Label title="Enable App">
+              <Toggle
+              checked={this.state.app_enabled===true}
+              onClick={() => sendBoolMsg(appNamespace + "/enable_app",!this.state.app_enabled)}>
+              </Toggle>
+        </Label>
+
+
+            </Column>
+          <Column>
+
+  
+          </Column>
+        </Columns>
+
+
+
+        <pre style={{ height: "40px", overflowY: "auto" ,fontWeight: 'bold' , color: Styles.vars.colors.Green, textAlign: "left" }}>
+            {this.state.app_msg}
+          </pre>
+
+
+          <Columns>
+          <Column>
+
+
+      <Label title={"Classifier Running"}>
+        <BooleanIndicator value={this.state.classifier_running} />
+      </Label>
+
+
+
+            </Column>
+          <Column>
+
+          <Label title={"Alert Classes Selected"}>
+        <BooleanIndicator value={classes_sel} />
+      </Label>
+  
+          </Column>
+        </Columns>
+
+
+
+
+
+
+
+
+        <div hidden={!this.state.classifier_running || !this.state.app_enabled}>
+
+
+   
+
+        <div style={{ borderTop: "1px solid #ffffff", marginTop: Styles.vars.spacing.medium, marginBottom: Styles.vars.spacing.xs }}/>
+
+       
+        <label style={{fontWeight: 'bold'}} align={"left"} textAlign={"left"}>
+          {"App Settings"}
+         </label>
+
+
+        <Columns>
+          <Column>
+
+
+
+         <Label title="Select Class Filters"> </Label>
 
                     <div onClick={this.toggleViewableTopics} style={{backgroundColor: Styles.vars.colors.grey0}}>
                       <Select style={{width: "10px"}}/>
@@ -251,48 +330,12 @@ class AppAiAlerts extends Component {
                     )}
                     </div>
 
+          </Column>
+          <Column>
 
-              </Column>
-              <Column>
-
-              <ButtonMenu>
-            <Button onClick={() => sendTriggerMsg( appNamespace + "/reset_app")}>{"Reset App"}</Button>
-          </ButtonMenu>
-
-            <ButtonMenu>
-              <Button onClick={() => sendTriggerMsg(appNamespace + "/save_config")}>{"Save Config"}</Button>
-        </ButtonMenu>
-
-        <ButtonMenu>
-              <Button onClick={() => sendTriggerMsg( appNamespace + "/reset_config")}>{"Reset Config"}</Button>
-        </ButtonMenu>
-
-          <Label title="Use Live Image">
-              <Toggle
-              checked={this.state.use_live_image===true}
-              onClick={() => sendBoolMsg(appNamespace + "/use_live_image",!this.state.use_live_image)}>
-              </Toggle>
-        </Label>
-        
-        
-        <Label title="Use Last Image">
-              <Toggle
-              checked={this.state.use_last_image===true}
-              onClick={() => sendBoolMsg(appNamespace + "/use_last_image",!this.state.use_last_image)}>
-              </Toggle>
-        </Label>
-
-
-
-
-              </Column>
-              </Columns>
-
-
-
-
+{/*}
         <SliderAdjustment
-          title={"Alert Sensitivity Ratio"}
+          title={"Alert Sensitivity"}
           msgType={"std_msgs/float32"}
           adjustment={this.state.sensitivity}
           topic={appNamespace + "/set_sensitivity"}
@@ -302,7 +345,73 @@ class AppAiAlerts extends Component {
           tooltip={""}
           unit={"%"}
       />
+*/}
 
+          <Label title={"Location"}>
+                <Input
+                  value={this.state.location_str}
+                  id="Location"
+                  onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"location_str")}
+                  onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_location_str")}
+                  style={{ width: "80%" }}
+                />
+              </Label>
+
+
+          <Label title="Take Snapshot on Alerts">
+              <Toggle
+              checked={this.state.snapshot_enabled===true}
+              onClick={() => sendBoolMsg(appNamespace + "/set_snapshot_enable",!this.state.snapshot_enabled)}>
+              </Toggle>
+        </Label>
+
+
+        <Label title={"Snapshot delay (sec)"}>
+                <Input
+                  value={this.state.snapshot_delay}
+                  id="Snapshot_Delay"
+                  onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"snapshot_delay")}
+                  onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_snapshot_delay")}
+                  style={{ width: "80%" }}
+                />
+          </Label>
+
+        </Column>
+        </Columns>
+
+      </div>
+
+      <div style={{ borderTop: "1px solid #ffffff", marginTop: Styles.vars.spacing.medium, marginBottom: Styles.vars.spacing.xs }}/>
+
+      <Columns>
+          <Column>
+
+            <ButtonMenu>
+              <Button onClick={() => sendTriggerMsg( appNamespace + "/reset_app")}>{"Reset App"}</Button>
+            </ButtonMenu>
+
+            </Column>
+          <Column>
+
+              <ButtonMenu>
+                <Button onClick={() => sendTriggerMsg(appNamespace + "/save_config")}>{"Save Config"}</Button>
+          </ButtonMenu>
+
+          </Column>
+          <Column>
+
+          <ButtonMenu>
+                <Button onClick={() => sendTriggerMsg( appNamespace + "/reset_config")}>{"Reset Config"}</Button>
+          </ButtonMenu>
+
+  
+          </Column>
+        </Columns>
+
+
+
+      </Column>
+        </Columns>
 
       </Section>
 
@@ -311,54 +420,68 @@ class AppAiAlerts extends Component {
   }
 
 
-  renderImageViewer(){
-    const connected = this.state.connected
-    const namespace = this.getAppNamespace()
-    const appNamespace = (connected) ? namespace: null
-    const imageNamespace = (connected) ? appNamespace + "/alert_image" : null
-    return (
-
-      <CameraViewer
-        imageTopic={imageNamespace}
-        title={this.state.selected_output_image}
-        hideQualitySelector={false}
-      />
-
-      )
-    }  
-
   render() {
-    const connected = this.state.connected
-    const namespace = this.getAppNamespace()
-    const appNamespace = (connected) ? namespace: null
+    const connected = this.state.connected === true
+    const appNamespace = (connected) ? this.getAppNamespace() : null
+    const show_detector_box = this.state.show_detector_box
+    const imageNamespace = appNamespace + '/' + this.state.image_name
+
     return (
 
       <Columns>
-      <Column equalWidth={false}>
+      <Column equalWidth={true}>
 
-  
-      <label style={{fontWeight: 'bold'}} align={"left"} textAlign={"left"}>
-          {"Connecting"}
-         </label>
-      
+       
 
-      {this.renderImageViewer()}
+      <CameraViewer
+        imageTopic={imageNamespace}
+        title={this.state.image_name}
+        hideQualitySelector={false}
+      />
 
 
       </Column>
       <Column>
 
 
+      <Columns>
+      <Column>
+
+      <Label title="Show Detector Settings">
+              <Toggle
+              checked={(this.state.show_detector_box === true)}
+              onClick={() => onChangeSwitchStateValue.bind(this)("show_detector_box",this.state.show_detector_box)}>
+              </Toggle>
+        </Label>
+
+      </Column>
+      <Column>
+
+    </Column>
+    </Columns>
+
+
+
+      <div hidden={!show_detector_box}>
+
       <AiDetectorMgr
               title={"Nepi_Mgr_AI_Detector"}
           />
 
+      </div>
+
+
       {this.renderApp()}
+
+
+      <div hidden={!connected}>
 
         <NepiIFSaveData
           saveNamespace={appNamespace}
           title={"Nepi_IF_SaveData"}
         />
+
+      </div>
 
       </Column>
       </Columns>

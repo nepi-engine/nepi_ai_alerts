@@ -21,6 +21,7 @@ import time
 import sys
 import numpy as np
 import cv2
+import threading
 import copy
 import math
 import matplotlib
@@ -55,14 +56,13 @@ class NepiAiAlertsApp(object):
 
   #Set Initial Values
   
-  FACTORY_SENSITIVITY = 0.0
+  
   FACTORY_SENSITIVITY_COUNT = 10
-  FACTORY_USE_LAST_IMAGE = False
+  FACTORY_SENSITIVITY = 1.0
 
   NONE_CLASSES_DICT = dict()
 
-  data_products = ["alert_image","alert"]
-  output_image_options = ["None","Alert_Image"]
+  data_products = ["Alert_Image","Alerts"]
   
   current_classifier = "None"
   current_classifier_state = "None"
@@ -70,14 +70,11 @@ class NepiAiAlertsApp(object):
   current_classifier_classes = "[]"
 
   current_image_topic = "None"
-  current_image_header = Header()
   image_source_topic = ""
   img_width = 0
   img_height = 0
   image_sub = None
-  last_img_msg = None
 
-  bbs_msg = None
 
   last_image_topic = "None"
   
@@ -86,17 +83,14 @@ class NepiAiAlertsApp(object):
   alerts_list = []
   alerts_dict = dict()
   active_alert = False
+  last_active_alert = False
 
   status_pub = None
   alert_trigger_pub = None
   alerts_pub = None
-  alerts_image_pub = None
+  image_pub = None
   alerts_boxes_2d_pub = None
 
-  seq = 0
-
-  #has_subscribers_detect_img = False
-  has_subscribers_alert_img = False
 
   classifier_running = False
   classifier_loading_progress = 0.0
@@ -105,9 +99,16 @@ class NepiAiAlertsApp(object):
   no_object_count = 0
 
   last_snapshot = time.time()
-  last_cv2_img = None
+
 
   reset_image_topic = False
+  app_enabled = False
+  app_msg = "App not enabled"
+  img_acquire = False
+  img_msg = None
+  last_img_msg = None
+  img_lock = threading.Lock()
+
   
   #######################
   ### Node Initialization
@@ -125,20 +126,28 @@ class NepiAiAlertsApp(object):
     self.initParamServerValues(do_updates = False)
     self.resetParamServer(do_updates = False)
    
-    # Message Image to publish when detector not running
-    message = "WAITING FOR AI DETECTOR TO START"
-    cv2_img = nepi_img.create_message_image(message)
-    self.ros_message_img = nepi_img.cv2img_to_rosimg(cv2_img)
 
-    #self.detection_alerts_image_pub = rospy.Publisher("~detection_image",Image,queue_size=1)
+
+    #self.detection_image_pub = rospy.Publisher("~detection_image",Image,queue_size=1)
     # Setup Node Publishers
     self.status_pub = rospy.Publisher("~status", AiAlertsStatus, queue_size=1, latch=True)
     self.alerts_pub = rospy.Publisher("~alerts", AiAlerts, queue_size=1, latch=True)
     self.alert_trigger_pub = rospy.Publisher("~alert_trigger",Empty,queue_size=1)
-    self.alerts_image_pub = rospy.Publisher("~alert_image",Image,queue_size=1, latch = True)
+    self.image_pub = rospy.Publisher("~alert_image",Image,queue_size=1, latch = True)
+
     time.sleep(1)
-    self.ros_message_img.header.stamp = nepi_ros.time_now()
-    self.alerts_image_pub.publish(self.ros_message_img)
+
+
+    # Message Image to publish when detector not running
+    message = "APP NOT ENABLED"
+    cv2_img = nepi_img.create_message_image(message)
+    self.app_ne_img = nepi_img.cv2img_to_rosimg(cv2_img)
+    self.image_pub.publish(self.app_ne_img)
+
+    message = "WAITING FOR AI DETECTOR TO START"
+    cv2_img = nepi_img.create_message_image(message)
+    self.classifier_nr_img = nepi_img.cv2img_to_rosimg(cv2_img)
+
 
     # Set up save data and save config services ########################################################
     factory_data_rates= {}
@@ -155,30 +164,29 @@ class NepiAiAlertsApp(object):
     self.initParamServerValues(do_updates=False)
 
     # App Specific Subscribers
-    set_image_input_sub = rospy.Subscriber('~use_live_image', Bool, self.setImageLiveCb, queue_size = 10)
-    set_image_delay_sub = rospy.Subscriber('~use_last_image', Bool, self.setImageLastCb, queue_size = 10)
-    add_all_sub = rospy.Subscriber('~add_all_alert_classes', Empty, self.addAllClassesCb, queue_size = 10)
-    remove_all_sub = rospy.Subscriber('~remove_all_alert_classes', Empty, self.removeAllClassesCb, queue_size = 10)
-    add_class_sub = rospy.Subscriber('~add_alert_class', String, self.addClassCb, queue_size = 10)
-    remove_class_sub = rospy.Subscriber('~remove_alert_class', String, self.removeClassCb, queue_size = 10)
-    age_filter_sub = rospy.Subscriber("~set_sensitivity", Float32, self.setSensitivityCb, queue_size = 10)
-    set_loc_sub = rospy.Subscriber('~set_location_str', String, self.setLocationCb, queue_size = 10)
-    set_snapshot_enable_sub = rospy.Subscriber('~set_snapshot_enable', Bool, self.setSnapshotEnableCb, queue_size = 10)
-    set_snapshot_delay_sub = rospy.Subscriber("~set_snapshot_delay", Float32, self.setSnapshotDelayCb, queue_size = 10)
+    rospy.Subscriber('~enable_app', Bool, self.appEnableCb, queue_size = 10)
+    rospy.Subscriber('~add_all_alert_classes', Empty, self.addAllClassesCb, queue_size = 10)
+    rospy.Subscriber('~remove_all_alert_classes', Empty, self.removeAllClassesCb, queue_size = 10)
+    rospy.Subscriber('~add_alert_class', String, self.addClassCb, queue_size = 10)
+    rospy.Subscriber('~remove_alert_class', String, self.removeClassCb, queue_size = 10)
+    #rospy.Subscriber("~set_sensitivity", Float32, self.setSensitivityCb, queue_size = 10)
+    rospy.Subscriber('~set_location_str', String, self.setLocationCb, queue_size = 10)
+    rospy.Subscriber('~set_snapshot_enable', Bool, self.setSnapshotEnableCb, queue_size = 10)
+    rospy.Subscriber("~set_snapshot_delay", Float32, self.setSnapshotDelayCb, queue_size = 10)
 
-    # Start an AI manager status monitoring thread
+
+    # Get AI Manager Service Call
     AI_MGR_STATUS_SERVICE_NAME = self.ai_mgr_namespace  + "/img_classifier_status_query"
     self.get_ai_mgr_status_service = rospy.ServiceProxy(AI_MGR_STATUS_SERVICE_NAME, ImageClassifierStatusQuery)
-    time.sleep(1)
-    nepi_ros.timer(nepi_ros.duration(1), self.updaterCb)
-
     # Start AI Manager Subscribers
     FOUND_OBJECT_TOPIC = self.ai_mgr_namespace  + "/found_object"
-    rospy.Subscriber(FOUND_OBJECT_TOPIC, ObjectCount, self.found_object_callback, queue_size = 1)
+    rospy.Subscriber(FOUND_OBJECT_TOPIC, ObjectCount, self.foundObjectCb, queue_size = 1)
     BOUNDING_BOXES_TOPIC = self.ai_mgr_namespace  + "/bounding_boxes"
-    rospy.Subscriber(BOUNDING_BOXES_TOPIC, BoundingBoxes, self.object_detected_callback, queue_size = 1)
+    rospy.Subscriber(BOUNDING_BOXES_TOPIC, BoundingBoxes, self.objectDetectedCb, queue_size = 1)
+    time.sleep(1)
 
-    nepi_ros.timer(nepi_ros.duration(1), self.updateHasSubscribersThread)
+    # Start timed update processes
+    nepi_ros.timer(nepi_ros.duration(1), self.updaterCb)
 
     time.sleep(1)
 
@@ -200,9 +208,8 @@ class NepiAiAlertsApp(object):
     self.resetApp()
 
   def resetApp(self):
+    nepi_ros.set_param(self,'~app_enabled',False)
     nepi_ros.set_param(self,'~last_classifier', "")
-    nepi_ros.set_param(self,'~use_live_image',True)
-    nepi_ros.set_param(self,'~use_last_image',self.FACTORY_USE_LAST_IMAGE)
     nepi_ros.set_param(self,'~selected_classes', [])
     nepi_ros.set_param(self,'~sensitivity', self.FACTORY_SENSITIVITY)
     nepi_ros.set_param(self,'~snapshot_enabled', False)
@@ -224,9 +231,10 @@ class NepiAiAlertsApp(object):
 
   def initParamServerValues(self,do_updates = True):
       nepi_msg.publishMsgInfo(self," Setting init values to param values")
+
+      self.init_app_enabled = nepi_ros.get_param(self,'~app_enabled',False)
       self.init_last_classifier = nepi_ros.get_param(self,"~last_classifier", "")
-      self.init_use_live_image = nepi_ros.get_param(self,'~use_live_image',True)
-      self.init_use_last_image = nepi_ros.get_param(self,'~use_last_image',self.FACTORY_USE_LAST_IMAGE)
+
       sel_classes = nepi_ros.get_param(self,'~selected_classes', ['All'])
       if 'All' in sel_classes:
         self.addAllClasses()
@@ -240,9 +248,8 @@ class NepiAiAlertsApp(object):
       self.resetParamServer(do_updates)
 
   def resetParamServer(self,do_updates = True):
+      nepi_ros.set_param(self,'~app_enabled',self.init_app_enabled)
       nepi_ros.set_param(self,'~last_classiier', self.init_last_classifier)
-      nepi_ros.set_param(self,'~use_live_image',self.init_use_live_image)
-      nepi_ros.set_param(self,'~use_last_image',self.init_use_last_image)
       nepi_ros.set_param(self,'~selected_classes', self.init_selected_classes)
       nepi_ros.set_param(self,'~sensitivity', self.init_sensitivity)
       nepi_ros.set_param(self,'~snapshot_enabled', self.init_snapshot_enabled)
@@ -258,13 +265,12 @@ class NepiAiAlertsApp(object):
   def publish_status(self):
     status_msg = AiAlertsStatus()
 
+    status_msg.app_enabled = nepi_ros.get_param(self,'~app_enabled',self.init_app_enabled)
+    status_msg.app_msg = self.app_msg
+
     status_msg.location_str = nepi_ros.get_param(self,'~location',self.init_location)
     status_msg.classifier_running = self.classifier_running
 
-    status_msg.classifier_name = self.current_classifier
-    status_msg.classifier_state = self.current_classifier_state
-    status_msg.use_live_image = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
-    status_msg.use_last_image = nepi_ros.get_param(self,'~use_last_image',self.init_use_last_image)
 
     avail_classes = self.classes_list
     #nepi_msg.publishMsgWarn(self," available classes: " + str(avail_classes))
@@ -281,132 +287,127 @@ class NepiAiAlertsApp(object):
       sel_classes = ['None']
     status_msg.selected_classes_list = (sel_classes)
     nepi_ros.set_param(self,'~selected_classes', sel_classes)
-
-    status_msg.sensitivity = nepi_ros.get_param(self,'~sensitivity', self.init_sensitivity)
+    sensitivity = nepi_ros.get_param(self,'~sensitivity', self.init_sensitivity)
+    status_msg.sensitivity = sensitivity
     status_msg.snapshot_enabled = nepi_ros.get_param(self,'~snapshot_enabled', self.init_snapshot_enabled)
     status_msg.snapshot_delay_sec = nepi_ros.get_param(self,'~snapshot_delay', self.init_snapshot_delay)
-
     status_msg.active_alert = self.active_alert
-
     self.status_pub.publish(status_msg)
 
  
   ## Status Publisher
   def publish_alerts(self):
-    alerts_msg = AiAlerts()
-    alerts_msg.header.stamp = nepi_ros.time_now()
-    alerts_msg.location_str = nepi_ros.get_param(self,'~location',self.init_location)
-    alerts_msg.alert_classes_list = self.alerts_list
-    self.alerts_pub.publish(alerts_msg)     
+    if self.active_alert == True:
+      alerts_msg = AiAlerts()
+      stamp = nepi_ros.time_now()
+      alerts_msg.header.stamp = stamp
+      alerts_msg.date_time_str = nepi_ros.get_datetime_str_from_stamp(stamp)
+
+      alerts_msg.location_str = nepi_ros.get_param(self,'~location',self.init_location)
+      alerts_msg.alert_classes_list = self.alerts_list
+      self.alerts_pub.publish(alerts_msg)     
     
  
 
   def updaterCb(self,timer):
-    update_status = False
-    try:
-      ai_mgr_status_response = self.get_ai_mgr_status_service()
-      #nepi_msg.publishMsgInfo(self," Got classifier status  " + str(ai_mgr_status_response))
-    except Exception as e:
-      nepi_msg.publishMsgWarn(self,"Failed to call AI MGR STATUS service" + str(e))
-      return
-    #status_str = str(ai_mgr_status_response)
-    #nepi_msg.publishMsgWarn(self," got ai manager status: " + status_str)
-    self.current_image_topic = ai_mgr_status_response.selected_img_topic
-    self.current_classifier = ai_mgr_status_response.selected_classifier
-    self.current_classifier_state = ai_mgr_status_response.classifier_state
-    self.classifier_running = self.current_classifier_state == "Running"
-    classes_list = ai_mgr_status_response.selected_classifier_classes
-    if classes_list != self.classes_list:
-      self.classes_list = classes_list
-      if len(self.classes_list) > 0:
-        cmap = plt.get_cmap('viridis')
-        color_list = cmap(np.linspace(0, 1, len(self.classes_list))).tolist()
-        rgb_list = []
-        for color in color_list:
-          rgb = []
-          for i in range(3):
-            rgb.append(int(color[i]*255))
-          rgb_list.append(rgb)
-        self.class_color_list = rgb_list
-        #nepi_msg.publishMsgWarn(self,self.class_color_list)
-      #classes_str = str(self.classes_list)
-      #nepi_msg.publishMsgWarn(self," got ai manager status: " + classes_str)
-      update_status = True
-  
-    selected_classes = nepi_ros.get_param(self,'~selected_classes', self.init_selected_classes)
-    last_classifier = nepi_ros.get_param(self,'~last_classiier', self.init_last_classifier)
-    if last_classifier != self.current_classifier and self.current_classifier != "None":
-      selected_classes = [] # Reset classes to all on new classifier
-      update_status = True
-    nepi_ros.set_param(self,'~selected_classes', selected_classes)
-    nepi_ros.set_param(self,'~last_classiier', self.current_classifier)
-    #nepi_msg.publishMsgWarn(self," Got image topics last and current: " + self.last_image_topic + " " + self.current_image_topic)
-    if self.classifier_running:
-      use_live_image = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
-      if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None") or self.reset_image_topic == True:
-        self.reset_image_topic = False
-        image_topic = ""
-        if use_live_image:
-          image_topic = nepi_ros.find_topic(self.current_image_topic)
-        if image_topic == "":
-          source_topic = AI_MGR_STATUS_SERVICE_NAME = self.ai_mgr_namespace  + "/source_image"
-          image_topic = nepi_ros.find_topic(source_topic)
-        nepi_msg.publishMsgInfo(self," Got detect image update topic update : " + image_topic)
-        update_status = True
-        if image_topic != "":
-          if self.image_sub != None:
-            nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + image_topic)
-            self.image_sub.unregister()
-            time.sleep(1)
-            self.image_sub = None
-          nepi_msg.publishMsgInfo(self," Subscribing to Image topic : " + image_topic)
-          self.image_sub = rospy.Subscriber(image_topic, Image, self.alertsImageCb, queue_size = 1)
-          time.sleep(1)
-          if self.alerts_image_pub is None:
-            #nepi_msg.publishMsgWarn(self," Creating Image publisher ")
-            self.alerts_image_pub = rospy.Publisher("~image",Image,queue_size=1)
-            time.sleep(1)
-          self.alerts_running = True
-          update_status = True
-    elif self.classifier_running == False or self.current_image_topic == "None" or self.current_image_topic == "":  # Turn off alerts subscribers and reset last image topic
-      self.alerts_running = False
+    update_status = True
+    app_enabled = nepi_ros.get_param(self,"~app_enabled", self.init_app_enabled)
+    app_msg = ""
+    if app_enabled == False:
+      app_msg += "App not enabled"
       self.alerts_dict = dict()
-      if self.image_sub != None:
-        nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + self.current_image_topic)
+      self.image_pub.publish(self.app_ne_img)
+      if self.image_sub is not None:
+        nepi_msg.publishMsgWarn(self," App Disabled, Unsubscribing from Image topic : " + self.last_image_topic)
         self.image_sub.unregister()
+        time.sleep(1)
         self.image_sub = None
-      update_status = True
-      time.sleep(1)
-    # Publish warning image if not running
-    if self.classifier_running == False or self.image_sub == None:
-      self.ros_message_img.header.stamp = nepi_ros.time_now()
-      self.alerts_image_pub.publish(self.ros_message_img)
-    # Save last image topic for next check
-    self.last_image_topic = self.current_image_topic
-
-    # Do alert check
-
-
-
-    sensitivity = nepi_ros.get_param(self,"~sensitivity",self.init_sensitivity)
-    sensitivity_count = int(self.FACTORY_SENSITIVITY_COUNT * sensitivity) 
-    alerts_dict = copy.deepcopy(self.alerts_dict)
-    alerts_list = []
-    #nepi_msg.publishMsgWarn(self," Sensitivity Count: " + str(sensitivity_count))
-    #nepi_msg.publishMsgWarn(self," Alerts Dict in: " + str(self.alerts_dict))
-    #nepi_msg.publishMsgWarn(self," Alerts List in: " + str(self.alerts_list))
-    for class_name in alerts_dict.keys():
-      count = alerts_dict[class_name]
-      if count > sensitivity_count and class_name not in alerts_list:
-        alerts_list.append(class_name)
-    if len(alerts_list) > 0: 
-      self.alert_trigger_pub.publish(Empty)
-      self.active_alert = True
-      self.publish_alerts()
-      self.alerts_list = alerts_list
-      update_status = True
     else:
-      self.active_alert = False
+      app_msg += "App enabled"
+      # Update classifier info
+      ai_mgr_status_response = None
+      try:
+        ai_mgr_status_response = self.get_ai_mgr_status_service()
+        #nepi_msg.publishMsgInfo(self," Got classifier status  " + str(ai_mgr_status_response))
+      except Exception as e:
+        nepi_msg.publishMsgWarn(self,"Failed to call AI MGR STATUS service" + str(e))
+        self.classifier_running = False
+        nepi_ros.set_param(self,'~last_classiier', "")
+        app_msg += ", AI Detector not connected"
+      if ai_mgr_status_response != None:
+        app_msg += ", AI Detector connected"
+        #status_str = str(ai_mgr_status_response)
+        #nepi_msg.publishMsgWarn(self," got ai manager status: " + status_str)
+        self.current_image_topic = ai_mgr_status_response.selected_img_topic
+        self.current_classifier = ai_mgr_status_response.selected_classifier
+        self.current_classifier_state = ai_mgr_status_response.classifier_state
+        self.classifier_running = self.current_classifier_state == "Running"
+        classes_list = ai_mgr_status_response.selected_classifier_classes
+        if classes_list != self.classes_list:
+          self.classes_list = classes_list
+          if len(self.classes_list) > 0:
+            cmap = plt.get_cmap('viridis')
+            color_list = cmap(np.linspace(0, 1, len(self.classes_list))).tolist()
+            rgb_list = []
+            for color in color_list:
+              rgb = []
+              for i in range(3):
+                rgb.append(int(color[i]*255))
+              rgb_list.append(rgb)
+            self.class_color_list = rgb_list
+            #nepi_msg.publishMsgWarn(self,self.class_color_list)
+          #classes_str = str(self.classes_list)
+          #nepi_msg.publishMsgWarn(self," got ai manager status: " + classes_str)
+          update_status = True
+        selected_classes = nepi_ros.get_param(self,'~selected_classes', self.init_selected_classes)
+        last_classifier = nepi_ros.get_param(self,'~last_classiier', self.init_last_classifier)
+        if last_classifier != self.current_classifier and self.current_classifier != "None":
+          selected_classes = [] # Reset classes to all on new classifier
+          update_status = True
+        nepi_ros.set_param(self,'~selected_classes', selected_classes)
+        nepi_ros.set_param(self,'~last_classiier', self.current_classifier)
+        #nepi_msg.publishMsgWarn(self," Got image topics last and current: " + self.last_image_topic + " " + self.current_image_topic)
+
+        # Update Image Topic Subscriber
+        if self.classifier_running == False:
+          app_msg += ", Classifier not running"
+          self.alerts_dict = dict()
+        else:
+          app_msg += ", Classifier running"
+          if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None") or self.reset_image_topic == True:
+            self.reset_image_topic = False
+            image_topic = nepi_ros.find_topic(self.current_image_topic)
+            if image_topic == "":
+              nepi_msg.publishMsgWarn(self," Could not find image update topic: " + self.current_image_topic)
+              self.image_pub.publish(self.classifier_nr_img)
+            else:
+              nepi_msg.publishMsgInfo(self," Found detect Image update topic : " + image_topic)
+              update_status = True
+              if self.image_sub != None:
+                nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + self.last_image_topic)
+                self.image_sub.unregister()
+                time.sleep(1)
+                self.image_sub = None
+              nepi_msg.publishMsgInfo(self," Subscribing to Image topic : " + image_topic)
+              self.image_sub = rospy.Subscriber(image_topic, Image, self.imageCb, queue_size = 1)
+
+          if self.current_image_topic == "None" or self.current_image_topic == "":  # Reset last image topic
+            if self.image_sub != None:
+              nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + self.current_image_topic)
+              self.image_sub.unregister()
+              time.sleep(1)
+              self.image_sub = None
+              update_status = True
+              time.sleep(1)
+      # Publish warning image if enabled and classifier not running
+      if self.classifier_running == False or self.image_sub == None:
+        self.classifier_nr_img.header.stamp = nepi_ros.time_now()
+        self.image_pub.publish(self.classifier_nr_img)
+      # Save last image topic for next check
+      self.last_image_topic = self.current_image_topic
+
+    self.app_msg = app_msg
+    # Publish status if needed
     if update_status == True:
       self.publish_status()
     
@@ -415,20 +416,10 @@ class NepiAiAlertsApp(object):
 
   ###################
   ## AI App Callbacks
-
-  def setImageLiveCb(self,msg):
-    ##nepi_msg.publishMsgInfo(self,msg)
-    live = msg.data
-    current_live = nepi_ros.get_param(self,'~use_live_image',self.init_use_live_image)
-    if live != current_live:
-      nepi_ros.set_param(self,'~use_live_image',live)
-      self.reset_image_topic = True # Will force resubscribe later
-    self.publish_status()
-
-  def setImageLastCb(self,msg):
-    ##nepi_msg.publishMsgInfo(self,msg)
-    use_last = msg.data
-    nepi_ros.set_param(self,'~use_last_image',use_last)
+  def appEnableCb(self,msg):
+    #nepi_msg.publishMsgInfo(self,msg)
+    val = msg.data
+    nepi_ros.set_param(self,'~app_enabled',val)
     self.publish_status()
 
   def addAllClassesCb(self,msg):
@@ -468,7 +459,7 @@ class NepiAiAlertsApp(object):
     self.publish_status()
 
   def setSensitivityCb(self,msg):
-    #nepi_msg.publishMsgInfo(self,msg)
+    nepi_msg.publishMsgInfo(self,msg)
     val = msg.data
     if val >= 0 and val <= 1:
       nepi_ros.set_param(self,'~sensitivity',val)
@@ -493,107 +484,64 @@ class NepiAiAlertsApp(object):
     nepi_ros.set_param(self,'~location', location_str)
     self.publish_status()
 
-
-  def updateHasSubscribersThread(self,timer):
-    #self.has_subscribers_detect_img = (self.detection_image_pub.get_num_connections() > 0)
-    if self.alerts_image_pub is not None:
-      self.has_subscribers_alert_img = (self.alerts_image_pub.get_num_connections() > 0)
-    else:
-      self.has_subscribers_alert_img = False
   
 
   #######################
   ### AI Magnager Callbacks
 
 
-
-  ### Monitor Output of AI model to clear detection status
-  def found_object_callback(self,found_obj_msg):
-    # Must reset alert lists if no alerts are detected
-    if found_obj_msg.count == 0:
-      #print("No objects detected")
-      self.bbs_msg = None
-      self.no_object_count += 1
-    else:
-      self.no_object_count = 0
-    if self.no_object_count > self.FACTORY_SENSITIVITY_COUNT:
-      self.alerts_list = []
-      self.alerts_dict = dict()
-      self.active_alert = False
-
-
-
   ### If object(s) detected, save bounding box info to global
-  def object_detected_callback(self,bounding_boxes_msg):
-    self.bbs_msg=bounding_boxes_msg
-    alerts_dict = copy.deepcopy(self.alerts_dict)
-    sel_classes = nepi_ros.get_param(self,'~selected_classes', self.init_selected_classes)
-    # Check for alert class
-    box_classes = []
-    for box in bounding_boxes_msg.bounding_boxes:
-      if box.Class not in box_classes:
-        box_classes.append(box.Class)
-    for box_class in box_classes:
-      if box_class in sel_classes:
-        if box_class in alerts_dict.keys():
-          count = alerts_dict[box_class] + 1
-          alerts_dict[box_class] = count
-        else:
-          alerts_dict[box_class] = 1
-        for alert_class in alerts_dict.keys():
-          if alerts_dict[alert_class] > self.FACTORY_SENSITIVITY_COUNT:
-            alerts_dict[alert_class] = self.FACTORY_SENSITIVITY_COUNT
-          if alert_class not in box_classes:
-            count = alerts_dict[alert_class] - 1 
-            alerts_dict[alert_class] = count
-            if alerts_dict[alert_class] < 0:
-              alerts_dict[alert_class] = 0
-      else:
-        if box_class in alerts_dict.keys():
-          alerts_dict[box_class] = 0
-    
-      
-    self.alerts_dict = alerts_dict
+  def objectDetectedCb(self,bounding_boxes_msg):
+    app_enabled = nepi_ros.get_param(self,"~app_enabled", self.init_app_enabled)
+    ros_timestamp = bounding_boxes_msg.header.stamp
 
-  def alertsImageCb(self,img_in_msg):    
-    data_product = 'alert_image'
-    use_last_img = nepi_ros.get_param(self,'~use_last_image',self.init_use_last_image)
-    has_subscribers =  self.has_subscribers_alert_img
-    saving_is_enabled = self.save_data_if.data_product_saving_enabled(data_product)
-    data_should_save  = self.save_data_if.data_product_should_save(data_product) and saving_is_enabled
-    snapshot_enabled = self.save_data_if.data_product_snapshot_enabled(data_product)
-    save_data = (saving_is_enabled and data_should_save) or snapshot_enabled
-
-    self.current_image_header = img_in_msg.header
-    ros_timestamp = img_in_msg.header.stamp     
-    cv2_in_img = nepi_img.rosimg_to_cv2img(img_in_msg)
-    if use_last_img:
-      cv2_img = copy.deepcopy(self.last_cv2_img)
-      self.last_cv2_img = copy.deepcopy(cv2_in_img)
+    if app_enabled == False:
+      self.alerts_list = []
     else:
-      cv2_img = copy.deepcopy(cv2_in_img)
-    if cv2_img is not None:
-        cv2_shape = cv2_img.shape
-        self.img_width = cv2_shape[1] 
-        self.img_height = cv2_shape[0] 
-    alerts_list = copy.deepcopy(self.alerts_list)
-    bbs_msg = copy.deepcopy(self.bbs_msg)
-  
-    # Process Alerts Image if Needed
-    if alerts_list == None:
-        alerts_list = []
-    if len(alerts_list) > 0 and cv2_img is not None:
+      alerts_list = []
+      alert_boxes = []
+      sel_classes = nepi_ros.get_param(self,'~selected_classes', self.init_selected_classes)
+      for box in bounding_boxes_msg.bounding_boxes:
+        if box.Class in sel_classes:
+          alert_boxes.append(box)
+          if box.Class not in alerts_list:
+            alerts_list.append(box.Class)
+      if len(alerts_list) > 0:
+        self.active_alert = True
+        self.alerts_list = alerts_list
         # create save dict
-        alert_dict = dict()
-        alert_dict['timestamp'] = nepi_ros.get_datetime_str_from_stamp(ros_timestamp)
-        alert_dict['location'] = nepi_ros.get_param(self,'~location',self.init_location)
-        alert_dict['alert_classes_list'] = self.alerts_list
-        nepi_save.save_dict2file(self,'alerts',alert_dict,ros_timestamp,save_check = True)
-        # apply overlays
-        if bbs_msg is not None:
-          bounding_boxes = bbs_msg.bounding_boxes
-          #nepi_msg.publishMsgWarn(self," Boxes: " + str(bounding_boxes))
-          for box in bounding_boxes:
+        alerts_dict = dict()
+        alerts_dict['timestamp'] = nepi_ros.get_datetime_str_from_stamp(ros_timestamp)
+        alerts_dict['location'] = nepi_ros.get_param(self,'~location',self.init_location)
+        alerts_dict['alert_classes_list'] = self.alerts_list
+        nepi_save.save_dict2file(self,'Alerts',alerts_dict,ros_timestamp,save_check = True)
+        self.publish_alerts()
+        self.alert_trigger_pub.publish(Empty())
+      else:
+        self.active_alert = False
+
+
+
+      # Process image 
+      img_in_msg = None
+      self.img_lock.acquire()
+      img_in_msg = copy.deepcopy(self.img_msg) 
+      self.img_msg = None # Clear the last image        
+      self.img_lock.release()
+      
+      if len(alert_boxes) == 0:
+        if img_in_msg is not None and not nepi_ros.is_shutdown():
+          self.image_pub.publish(img_in_msg)
+      else:
+        if img_in_msg is not None:
+          current_image_header = img_in_msg.header
+          ros_timestamp = img_in_msg.header.stamp     
+          cv2_img = nepi_img.rosimg_to_cv2img(img_in_msg).astype(np.uint8)
+          cv2_shape = cv2_img.shape
+          self.img_width = cv2_shape[1] 
+          self.img_height = cv2_shape[0]   
+        
+          for box in alert_boxes:
             #nepi_msg.publishMsgWarn(self," Box: " + str(box))
             class_name = box.Class
             if class_name in alerts_list:
@@ -604,27 +552,58 @@ class NepiAiAlertsApp(object):
               class_color = (0,0,255)
               line_thickness = 2
               cv2.rectangle(cv2_img, start_point, end_point, class_color, thickness=line_thickness)
-        # Process alert triggered snapshot
-        snapshot_enabled = nepi_ros.get_param(self,'~snapshot_enabled',self.init_snapshot_enabled)
-        snapshot_delay = nepi_ros.get_param(self,'~snapshot_delay',self.init_snapshot_delay)
-        if snapshot_enabled == True:
-            time_since = time.time() - self.last_snapshot
-            if time_since >= snapshot_delay:
-                nepi_save.save_dict2file(self,'alerts',alert_dict,ros_timestamp,save_check = False)
-                nepi_save.save_img2file(self,'alert_image',cv2_img,ros_timestamp,save_check = False)
-    if cv2_img is not None:
-      # Publish new image to ros
-      if not nepi_ros.is_shutdown() and has_subscribers: #and has_subscribers:
-          #Convert OpenCV image to ROS image
-          cv2_shape = cv2_img.shape
-          if  cv2_shape[2] == 3:
-            encode = 'bgr8'
-          else:
-            encode = 'mono8'
-          img_out_msg = nepi_img.cv2img_to_rosimg(cv2_img, encoding=encode)
-          self.alerts_image_pub.publish(img_out_msg)
-      # Save Data if Time
-      nepi_save.save_img2file(self,'alert_image',cv2_img,ros_timestamp,save_check = False)
+
+            # Publish new image to ros
+            if not nepi_ros.is_shutdown() and self.image_pub is not None: #and has_subscribers:
+                #Convert OpenCV image to ROS image
+                cv2_shape = cv2_img.shape
+                if  cv2_shape[2] == 3:
+                  encode = 'bgr8'
+                else:
+                  encode = 'mono8'
+                img_out_msg = nepi_img.cv2img_to_rosimg(cv2_img, encoding=encode)
+                self.image_pub.publish(img_out_msg)
+            # Save Data if Time
+            nepi_save.save_img2file(self,'alert_image',cv2_img,ros_timestamp,save_check = True)
+    self.publish_status()
+
+  def imageCb(self,image_msg):    
+      self.img_lock.acquire()
+      self.img_msg = copy.deepcopy(self.last_img_msg)
+      self.img_lock.release()
+      self.last_img_msg = copy.deepcopy(image_msg)
+
+
+
+  ### Monitor Output of AI model to clear detection status
+  def foundObjectCb(self,found_obj_msg):
+    app_enabled = nepi_ros.get_param(self,"~app_enabled", self.init_app_enabled)
+
+    #Clean Up Detection and Alert data
+    if found_obj_msg.count == 0:
+      #  Run App Process
+      if app_enabled == True:
+        # publish current image msg with no overlay
+        img_in_msg = None
+        self.img_lock.acquire()
+        img_in_msg = copy.deepcopy(self.img_msg) 
+        self.img_msg = None # Clear the last image        
+        self.img_lock.release()
+        if not nepi_ros.is_shutdown() and self.image_pub is not None and img_in_msg is not None:
+          self.image_pub.publish(img_in_msg)
+
+        self.alerts_list = []
+        self.alerts_dict = dict()
+        self.active_alert = False
+        
+        self.publish_status()
+
+
+
+
+
+
+
     
 
 

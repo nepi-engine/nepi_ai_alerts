@@ -17,6 +17,7 @@ project(nepi_app_ai_alerts)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
 message_generation
+rospy
 std_msgs
 sensor_msgs
 geometry_msgs

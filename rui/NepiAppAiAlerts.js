@@ -231,7 +231,7 @@ class AppAiAlerts extends Component {
     const classifier_running = this.state.classifier_running
     const connected = this.state.connected === true
     const appNamespace = this.getAppNamespace()
-    const classes_sel = selectedClasses.length > 1
+    const classes_sel = selectedClasses[0] !== "" || selectedClasses[0] !== "None"
 
     return (
       <Section title={"AI Alerts App"}>
@@ -239,31 +239,38 @@ class AppAiAlerts extends Component {
         <Columns>
         <Column>
 
-
         <Columns>
-          <Column>
+        <Column>
 
-          <Label title="Enable App">
-              <Toggle
-              checked={this.state.app_enabled===true}
-              onClick={() => sendBoolMsg(appNamespace + "/enable_app",!this.state.app_enabled)}>
-              </Toggle>
-        </Label>
+        <div hidden={(connected === true)}>
+
+      <pre style={{ height: "40px", overflowY: "auto" ,fontWeight: 'bold' , color: Styles.vars.colors.Green, textAlign: "left" }}>
+          {"Loading"}
+        </pre>
+
+      </div>
+
+      <div hidden={(connected === false)}>
+
+        <Label title="Enable App">
+            <Toggle
+            checked={this.state.app_enabled===true}
+            onClick={() => sendBoolMsg(appNamespace + "/enable_app",!this.state.app_enabled)}>
+            </Toggle>
+      </Label>
+
+      </div>
 
 
-            </Column>
-          <Column>
-
-  
           </Column>
-        </Columns>
+        <Column>
 
 
+        </Column>
+      </Columns>
 
-        <pre style={{ height: "40px", overflowY: "auto" ,fontWeight: 'bold' , color: Styles.vars.colors.Green, textAlign: "left" }}>
-            {this.state.app_msg}
-          </pre>
 
+      <div hidden={(connected !== true || this.state.app_enabled !== true)}>
 
           <Columns>
           <Column>
@@ -285,16 +292,6 @@ class AppAiAlerts extends Component {
           </Column>
         </Columns>
 
-
-
-
-
-
-
-
-        <div hidden={!this.state.classifier_running || !this.state.app_enabled}>
-
-
    
 
         <div style={{ borderTop: "1px solid #ffffff", marginTop: Styles.vars.spacing.medium, marginBottom: Styles.vars.spacing.xs }}/>
@@ -310,7 +307,7 @@ class AppAiAlerts extends Component {
 
 
 
-         <Label title="Select Class Filters"> </Label>
+         <Label title="Select Alert Classes"> </Label>
 
                     <div onClick={this.toggleViewableTopics} style={{backgroundColor: Styles.vars.colors.grey0}}>
                       <Select style={{width: "10px"}}/>
@@ -379,7 +376,7 @@ class AppAiAlerts extends Component {
         </Column>
         </Columns>
 
-      </div>
+
 
       <div style={{ borderTop: "1px solid #ffffff", marginTop: Styles.vars.spacing.medium, marginBottom: Styles.vars.spacing.xs }}/>
 
@@ -408,7 +405,7 @@ class AppAiAlerts extends Component {
           </Column>
         </Columns>
 
-
+        </div>
 
       </Column>
         </Columns>

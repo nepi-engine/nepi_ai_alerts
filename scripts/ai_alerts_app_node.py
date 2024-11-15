@@ -83,7 +83,7 @@ class NepiAiAlertsApp(object):
   alerts_list = []
   alerts_dict = dict()
   active_alert = False
-  last_active_alert = False
+
 
   status_pub = None
   alert_trigger_pub = None
@@ -310,6 +310,8 @@ class NepiAiAlertsApp(object):
  
 
   def updaterCb(self,timer):
+    # Save last image topic for next check
+    self.last_image_topic = self.current_image_topic
     update_status = True
     app_enabled = nepi_ros.get_param(self,"~app_enabled", self.init_app_enabled)
     app_msg = ""
@@ -403,8 +405,6 @@ class NepiAiAlertsApp(object):
       if self.classifier_running == False or self.image_sub == None:
         self.classifier_nr_img.header.stamp = nepi_ros.time_now()
         self.image_pub.publish(self.classifier_nr_img)
-      # Save last image topic for next check
-      self.last_image_topic = self.current_image_topic
 
     self.app_msg = app_msg
     # Publish status if needed

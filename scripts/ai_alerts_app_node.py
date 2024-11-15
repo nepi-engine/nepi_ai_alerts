@@ -164,6 +164,7 @@ class NepiAiAlertsApp(object):
     self.initParamServerValues(do_updates=False)
 
     # App Specific Subscribers
+    rospy.Subscriber('~publish_status', Empty, self.pubStatusCb, queue_size = 10)
     rospy.Subscriber('~enable_app', Bool, self.appEnableCb, queue_size = 10)
     rospy.Subscriber('~add_all_alert_classes', Empty, self.addAllClassesCb, queue_size = 10)
     rospy.Subscriber('~remove_all_alert_classes', Empty, self.removeAllClassesCb, queue_size = 10)
@@ -312,7 +313,7 @@ class NepiAiAlertsApp(object):
   def updaterCb(self,timer):
     # Save last image topic for next check
     self.last_image_topic = self.current_image_topic
-    update_status = True
+    update_status = False
     app_enabled = nepi_ros.get_param(self,"~app_enabled", self.init_app_enabled)
     app_msg = ""
     if app_enabled == False:
@@ -416,6 +417,10 @@ class NepiAiAlertsApp(object):
 
   ###################
   ## AI App Callbacks
+
+  def pubStatusCb(self,msg):
+    self.publish_status()
+
   def appEnableCb(self,msg):
     #nepi_msg.publishMsgInfo(self,msg)
     val = msg.data

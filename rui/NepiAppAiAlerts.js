@@ -280,7 +280,7 @@ class AppAiAlerts extends Component {
           <Column>
 
 
-      <Label title={"Classifier Running"}>
+      <Label title={"AI Detection Running"}>
         <BooleanIndicator value={this.state.classifier_running} />
       </Label>
 
@@ -380,7 +380,7 @@ class AppAiAlerts extends Component {
         </Column>
         </Columns>
 
-
+        </div>
 
       <div style={{ borderTop: "1px solid #ffffff", marginTop: Styles.vars.spacing.medium, marginBottom: Styles.vars.spacing.xs }}/>
 
@@ -409,7 +409,7 @@ class AppAiAlerts extends Component {
           </Column>
         </Columns>
 
-        </div>
+
 
       </Column>
         </Columns>
@@ -448,7 +448,7 @@ class AppAiAlerts extends Component {
       <Columns>
       <Column>
 
-      <Label title="Show Detector Settings">
+      <Label title="Show AI Detector Settings">
               <Toggle
               checked={(this.state.show_detector_box === true)}
               onClick={() => onChangeSwitchStateValue.bind(this)("show_detector_box",this.state.show_detector_box)}>

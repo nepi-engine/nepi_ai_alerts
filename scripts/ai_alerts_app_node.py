@@ -112,7 +112,7 @@ class NepiAiAlertsApp(object):
   img_has_subs = False
 
   alert_boxes_acquire = False
-  alert_boxes_locs = None
+  alert_boxes = []
   alert_boxes_lock = threading.Lock()
   
   last_app_enabled = False
@@ -573,6 +573,7 @@ class NepiAiAlertsApp(object):
     elif has_subscribers or saving_is_enabled or snapshot_enabled:
       self.img_lock.acquire()
       img_msg = copy.deepcopy(self.img_msg)
+      self.img_msg = None
       self.img_lock.release()
       if img_msg is not None:
 

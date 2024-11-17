@@ -284,13 +284,15 @@ class AppAiAlerts extends Component {
         <BooleanIndicator value={this.state.classifier_running} />
       </Label>
 
-
+      <Label title={"Alert Classes Selected"}>
+        <BooleanIndicator value={classes_sel} />
+      </Label>
 
             </Column>
           <Column>
 
-          <Label title={"Alert Classes Selected"}>
-        <BooleanIndicator value={classes_sel} />
+          <Label title={"Alert Active"}>
+        <BooleanIndicator value={this.state.active_alert} />
       </Label>
   
           </Column>

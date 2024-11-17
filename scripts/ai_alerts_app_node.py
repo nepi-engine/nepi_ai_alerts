@@ -330,7 +330,6 @@ class NepiAiAlertsApp(object):
     if app_enabled == False:
       app_msg += "App not enabled"
       self.alerts_dict = dict()
-      self.image_pub.publish(self.app_ne_img)
       if self.image_sub is not None:
         nepi_msg.publishMsgWarn(self," App Disabled, Unsubscribing from Image topic : " + self.last_image_topic)
         self.image_sub.unregister()
@@ -361,6 +360,7 @@ class NepiAiAlertsApp(object):
       self.classifier_running = self.current_classifier_state == "Running"
       classes_list = ai_mgr_status_response.selected_classifier_classes
       if classes_list != self.classes_list:
+        update_status = True
         self.classes_list = classes_list
         if len(self.classes_list) > 0:
           cmap = plt.get_cmap('viridis')
@@ -372,10 +372,7 @@ class NepiAiAlertsApp(object):
               rgb.append(int(color[i]*255))
             rgb_list.append(rgb)
           self.class_color_list = rgb_list
-          #nepi_msg.publishMsgWarn(self,self.class_color_list)
-        #classes_str = str(self.classes_list)
-        #nepi_msg.publishMsgWarn(self," got ai manager status: " + classes_str)
-        update_status = True
+        
       selected_classes = nepi_ros.get_param(self,'~selected_classes', self.init_selected_classes)
       last_classifier = nepi_ros.get_param(self,'~last_classiier', self.init_last_classifier)
       if last_classifier != self.current_classifier and self.current_classifier != "None":
@@ -392,14 +389,13 @@ class NepiAiAlertsApp(object):
       else:
         app_msg += ", Classifier running"
         if (self.last_image_topic != self.current_image_topic) or (self.image_sub == None and self.current_image_topic != "None") or self.reset_image_topic == True:
+          update_status = True
           self.reset_image_topic = False
           image_topic = nepi_ros.find_topic(self.current_image_topic)
           if image_topic == "":
             nepi_msg.publishMsgWarn(self," Could not find image update topic: " + self.current_image_topic)
-            self.image_pub.publish(self.classifier_nr_img)
           elif app_enabled == True and image_topic != "None":
             nepi_msg.publishMsgInfo(self," Found detect Image update topic : " + image_topic)
-            update_status = True
             if self.image_sub != None:
               nepi_msg.publishMsgWarn(self," Unsubscribing to Image topic : " + self.last_image_topic)
               self.image_sub.unregister()
@@ -419,11 +415,6 @@ class NepiAiAlertsApp(object):
     # Check for img subscribers
     if self.image_sub is not None:
       self.img_has_subs = (self.image_sub.get_num_connections() > 0)
-
-    # Publish warning image if enabled and classifier not running
-    if self.classifier_running == False or self.image_sub == None:
-      self.classifier_nr_img.header.stamp = nepi_ros.time_now()
-      self.image_pub.publish(self.classifier_nr_img)
 
     self.app_msg = app_msg
     # Publish status if needed

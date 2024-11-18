@@ -10,8 +10,9 @@ string image_topic
 string[] available_classes_list
 string[] selected_classes_list
 
-float32 sensitivity 
-bool snapshot_enabled
-float32 snapshot_delay_sec 
+float32 alert_delay_sec 
+float32 clear_delay_sec
 
-bool active_alert
+float32 trigger_delay_sec 
+bool snapshot_trigger_enabled
+bool event_trigger_enabled

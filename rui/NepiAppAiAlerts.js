@@ -1,10 +1,20 @@
 /*
- * Copyright (c) 2024 Numurus, LLC <https://www.numurus.com>.
- *
- * This file is part of nepi-engine
- * (see https://github.com/nepi-engine).
- *
- * License: 3-clause BSD, see https://opensource.org/licenses/BSD-3-Clause
+#
+# Copyright (c) 2024 Numurus <https://www.numurus.com>.
+#
+# This file is part of nepi applications (nepi_apps) repo
+# (see https://https://github.com/nepi-engine/nepi_apps)
+#
+# License: nepi applications are licensed under the "Numurus Software License", 
+# which can be found at: <https://numurus.com/wp-content/uploads/Numurus-Software-License-Terms.pdf>
+#
+# Redistributions in source code must retain this top-level comment block.
+# Plagiarizing this software to sidestep the license obligations is illegal.
+#
+# Contact Information:
+# ====================
+# - mailto:nepi@numurus.com
+#
  */
 import React, { Component } from "react"
 import { observer, inject } from "mobx-react"
@@ -58,24 +68,37 @@ class AppAiAlerts extends Component {
       last_classes_list: [],
       selected_classes_list:[],
 
-      sensitivity: null,
-      snapshot_enabled: null,
-      snapshot_delay: null,
+      alert_delay_sec : null,
+      clear_delay_sec : null,
 
-      active_alert: false,
+      trigger_delay_sec: null,
+      trigger_count: 0,
+      snapshot_enabled: null,
+      event_enabled: null,
+
+      alert_state: false,
         
       viewableTopics: false,
 
       statusListener: null,
+      alertListener: null,
+      triggerListener: null,
 
       connected: false,
       needs_update: true
+
 
     }
   
     this.getAppNamespace = this.getAppNamespace.bind(this)
     this.statusListener = this.statusListener.bind(this)
     this.updateStatusListener = this.updateStatusListener.bind(this)
+
+    this.alertListener = this.alertListener.bind(this)
+    this.updateAlertListener = this.updateAlertListener.bind(this)
+
+    this.triggerListener = this.triggerListener.bind(this)
+    this.updateTriggerListener = this.updateTriggerListener.bind(this)
     
     this.onToggleClassSelection = this.onToggleClassSelection.bind(this)
     this.getClassOptions = this.getClassOptions.bind(this)
@@ -111,11 +134,12 @@ class AppAiAlerts extends Component {
     available_classes_list: message.available_classes_list,
     selected_classes_list: message.selected_classes_list,
 
-    sensitivity: message.sensitivity,
-    snapshot_enabled: message.snapshot_enabled,
-    snapshot_delay: message.snapshot_delay_sec,
-
-    active_alert: message.active_alert
+    alert_delay_sec : message.alert_delay_sec ,
+    clear_delay_sec : message.clear_delay_sec ,
+  
+    trigger_delay_sec: message.trigger_delay_sec,
+    snapshot_enabled: message.snapshot_trigger_enabled,
+    event_enabled: message.event_trigger_enabled,
 
     })
 
@@ -130,6 +154,21 @@ class AppAiAlerts extends Component {
     if (last_classes_list !== this.state.available_classes_list){
       this.render()
     }
+  }
+
+  // Callback for handling ROS Status messages
+  alertListener(message) {
+    this.setState({
+      alert_state: message.data
+    })
+  }
+
+  // Callback for handling ROS Status messages
+  triggerListener(message) {
+    const count = this.state.trigger_count + 1
+    this.setState({
+      trigger_count: count
+    })
   }
 
     // Function for configuring and subscribing to Status
@@ -151,6 +190,43 @@ class AppAiAlerts extends Component {
       this.render()
     }
 
+    // Function for configuring and subscribing to Status
+    updateAlertListener() {
+      const appNamespace = this.getAppNamespace()
+      const statusNamespace = appNamespace + '/alert_state'
+      if (this.state.alertListener) {
+        this.state.alertListener.unsubscribe()
+      }
+      var alertListener = this.props.ros.setupStatusListener(
+            statusNamespace,
+            "std_msgs/Bool",
+            this.alertListener
+          )
+      this.setState({ 
+        alertListener: alertListener,
+      })
+      this.render()
+    }
+
+    // Function for configuring and subscribing to Status
+    updateTriggerListener() {
+      const appNamespace = this.getAppNamespace()
+      const statusNamespace = appNamespace + '/alert_trigger'
+      if (this.state.triggerListener) {
+        this.state.triggerListener.unsubscribe()
+      }
+      var triggerListener = this.props.ros.setupStatusListener(
+            statusNamespace,
+            "std_msgs/Empty",
+            this.triggerListener
+          )
+      this.setState({ 
+        triggerListener: triggerListener,
+      })
+      this.render()
+    }
+
+
 
   // Lifecycle method called when compnent updates.
   // Used to track changes in the topic
@@ -162,6 +238,8 @@ class AppAiAlerts extends Component {
       if (namespace.indexOf('null') === -1){
         this.setState({appNamespace: namespace})
         this.updateStatusListener()
+        this.updateAlertListener()
+        this.updateTriggerListener()
       } 
     }
   }
@@ -172,6 +250,8 @@ class AppAiAlerts extends Component {
   componentWillUnmount() {
     if (this.state.statusListener) {
       this.state.statusListener.unsubscribe()
+      this.state.alertListener.unsubscribe()
+      this.state.triggerListener.unsubscribe()
     }
   }
 
@@ -310,6 +390,15 @@ class AppAiAlerts extends Component {
           <Column>
 
 
+          <Label title={"Set Location"}>
+                <Input
+                  value={this.state.location_str !== "" ? this.state.location_str : "Not Set"}
+                  id="Location"
+                  onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"location_str")}
+                  onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_location_str")}
+                  style={{ width: "80%" }}
+                />
+              </Label>
 
          <Label title="Select Alert Classes"> </Label>
 
@@ -334,48 +423,70 @@ class AppAiAlerts extends Component {
           </Column>
           <Column>
 
-{/*}
-        <SliderAdjustment
-          title={"Alert Sensitivity"}
-          msgType={"std_msgs/float32"}
-          adjustment={this.state.sensitivity}
-          topic={appNamespace + "/set_sensitivity"}
-          scaled={0.01}
-          min={0}
-          max={100}
-          tooltip={""}
-          unit={"%"}
-      />
-*/}
+          <div style={{ borderTop: "1px solid #ffffff", marginTop: Styles.vars.spacing.medium, marginBottom: Styles.vars.spacing.xs }}/>
 
-          <Label title={"Location"}>
+          <Label title={"Alert State"}>
+        <BooleanIndicator value={this.state.alert_state} />
+          </Label>
+
+          <Label title={"Alert Delay (sec)"}>
                 <Input
-                  value={this.state.location_str}
-                  id="Location"
-                  onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"location_str")}
-                  onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_location_str")}
+                  value={this.state.alert_delay_sec}
+                  id="trigger_time"
+                  onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"alert_delay_sec")}
+                  onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_alert_delay")}
                   style={{ width: "80%" }}
                 />
               </Label>
 
 
-          <Label title="Take Snapshot on Alerts">
+              <Label title={"Clear Delay (sec)"}>
+                <Input
+                  value={this.state.clear_delay_sec}
+                  id="clear _time"
+                  onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"clear_delay_sec")}
+                  onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_clear_delay")}
+                  style={{ width: "80%" }}
+                />
+              </Label>
+
+      <div style={{ borderTop: "1px solid #ffffff", marginTop: Styles.vars.spacing.medium, marginBottom: Styles.vars.spacing.xs }}/>
+
+          <Label title={"Trigger Count"}>
+              <Input
+                disabled
+                style={{ width: "45%", float: "left" }}
+                value={this.state.trigger_count}
+              />
+            </Label>
+
+
+          <Label title={"Trigger Delay (sec)"}>
+            <Input
+              value={this.state.trigger_delay_sec}
+              id="trigger_delay_sec"
+              onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"trigger_delay_sec")}
+              onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_trigger_delay")}
+              style={{ width: "80%" }}
+            />
+      </Label>
+
+          <Label title="Enable Snapshot Triggers">
               <Toggle
               checked={this.state.snapshot_enabled===true}
-              onClick={() => sendBoolMsg(appNamespace + "/set_snapshot_enable",!this.state.snapshot_enabled)}>
+              onClick={() => sendBoolMsg(appNamespace + "/enable_snapshot_trigger",!this.state.snapshot_enabled)}>
+              </Toggle>
+        </Label>
+
+        <Label title="Enable Event Triggers">
+              <Toggle
+              checked={this.state.event_enabled===true}
+              onClick={() => sendBoolMsg(appNamespace + "/enable_event_trigger",!this.state.event_enabled)}>
               </Toggle>
         </Label>
 
 
-        <Label title={"Snapshot delay (sec)"}>
-                <Input
-                  value={this.state.snapshot_delay}
-                  id="Snapshot_Delay"
-                  onChange= {(event) => onUpdateSetStateValue.bind(this)(event,"snapshot_delay")}
-                  onKeyDown= {(event) => onEnterSendFloatValue.bind(this)(event,appNamespace + "/set_snapshot_delay")}
-                  style={{ width: "80%" }}
-                />
-          </Label>
+
 
         </Column>
         </Columns>

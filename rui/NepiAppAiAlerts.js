@@ -56,7 +56,6 @@ class AppAiAlerts extends Component {
       app_enabled: false,
       app_msg: "Connecting",
       image_name: "alert_image",
-      show_detector_box: false,
 
       location_str: "",
 
@@ -329,7 +328,7 @@ class AppAiAlerts extends Component {
         <div hidden={(connected === true)}>
 
       <pre style={{ height: "40px", overflowY: "auto" ,fontWeight: 'bold' , color: Styles.vars.colors.Green, textAlign: "left" }}>
-          {"Loading"}
+          {"Loading or Refresh Page"}
         </pre>
 
       </div>
@@ -371,9 +370,9 @@ class AppAiAlerts extends Component {
             </Column>
           <Column>
 
-          <Label title={"Alert Active"}>
-        <BooleanIndicator value={this.state.active_alert} />
-      </Label>
+          <Label title={"Alert State"}>
+        <BooleanIndicator value={this.state.alert_state} />
+          </Label>
   
           </Column>
         </Columns>
@@ -425,11 +424,6 @@ class AppAiAlerts extends Component {
           </Column>
           <Column>
 
-          <div style={{ borderTop: "1px solid #ffffff", marginTop: Styles.vars.spacing.medium, marginBottom: Styles.vars.spacing.xs }}/>
-
-          <Label title={"Alert State"}>
-        <BooleanIndicator value={this.state.alert_state} />
-          </Label>
 
           <Label title={"Alert Delay (sec)"}>
                 <Input
@@ -454,7 +448,7 @@ class AppAiAlerts extends Component {
 
       <div style={{ borderTop: "1px solid #ffffff", marginTop: Styles.vars.spacing.medium, marginBottom: Styles.vars.spacing.xs }}/>
 
-          <Label title={"Trigger Count"}>
+          <Label title={"Alert Trigger Count"}>
               <Input
                 disabled
                 style={{ width: "45%", float: "left" }}
@@ -537,7 +531,6 @@ class AppAiAlerts extends Component {
   render() {
     const connected = this.state.connected === true
     const appNamespace = (connected) ? this.getAppNamespace() : null
-    const show_detector_box = this.state.show_detector_box
     const imageNamespace = appNamespace + '/' + this.state.image_name
 
     return (
@@ -545,7 +538,14 @@ class AppAiAlerts extends Component {
       <Columns>
       <Column equalWidth={true}>
 
-       
+      <div hidden={!connected}>
+
+      <NepiIFSaveData
+        saveNamespace={appNamespace}
+        title={"Nepi_IF_SaveData"}
+      />
+
+      </div>
 
       <CameraViewer
         imageTopic={imageNamespace}
@@ -558,44 +558,15 @@ class AppAiAlerts extends Component {
       <Column>
 
 
-      <Columns>
-      <Column>
-
-      <Label title="Show AI Detector Settings">
-              <Toggle
-              checked={(this.state.show_detector_box === true)}
-              onClick={() => onChangeSwitchStateValue.bind(this)("show_detector_box",this.state.show_detector_box)}>
-              </Toggle>
-        </Label>
-
-      </Column>
-      <Column>
-
-    </Column>
-    </Columns>
-
-
-
-      <div hidden={!show_detector_box}>
 
       <AiDetectorMgr
               title={"Nepi_Mgr_AI_Detector"}
           />
 
-      </div>
-
 
       {this.renderApp()}
 
 
-      <div hidden={!connected}>
-
-        <NepiIFSaveData
-          saveNamespace={appNamespace}
-          title={"Nepi_IF_SaveData"}
-        />
-
-      </div>
 
       </Column>
       </Columns>

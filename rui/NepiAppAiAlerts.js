@@ -22,7 +22,6 @@ import { observer, inject } from "mobx-react"
 import Section from "./Section"
 //import EnableAdjustment from "./EnableAdjustment"
 import Button, { ButtonMenu } from "./Button"
-import {SliderAdjustment} from "./AdjustmentWidgets"
 import Label from "./Label"
 import { Column, Columns } from "./Columns"
 import Input from "./Input"
@@ -37,7 +36,7 @@ import CameraViewer from "./CameraViewer"
 import NepiIFSaveData from "./Nepi_IF_SaveData"
 
 
-import {round, onChangeSwitchStateValue, onUpdateSetStateValue, onEnterSendFloatValue} from "./Utilities"
+import {onUpdateSetStateValue, onEnterSendFloatValue} from "./Utilities"
 
 @inject("ros")
 @observer
@@ -310,7 +309,6 @@ class AppAiAlerts extends Component {
     const {sendBoolMsg, sendTriggerMsg,} = this.props.ros
     const classOptions = this.getClassOptions()
     const selectedClasses = this.state.selected_classes_list
-    const NoneOption = <Option>None</Option>
     const classifier_running = this.state.classifier_running
     const connected = this.state.connected === true
     const appNamespace = this.getAppNamespace()
@@ -360,7 +358,7 @@ class AppAiAlerts extends Component {
 
 
       <Label title={"AI Detection Running"}>
-        <BooleanIndicator value={this.state.classifier_running} />
+        <BooleanIndicator value={classifier_running} />
       </Label>
 
       <Label title={"Alert Classes Selected"}>
